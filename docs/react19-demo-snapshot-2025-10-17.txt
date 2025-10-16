@@ -1,0 +1,323 @@
+===== FILE: src/App.tsx =====
+// src/App.tsx
+import { Link } from "react-router-dom";
+
+export default function App() {
+  return (
+    <div className="container">
+      <h1>React 버전별 차이 데모 (Vite + React 19.2)</h1>
+      <ul>
+        <li>
+          <Link to="/18-vs-19/forms">
+            [18 ↔ 19] 폼 처리: setState/핸들러 vs Actions/ActionState
+          </Link>
+        </li>
+        <li>
+          <Link to="/19-vs-19_1/notes">
+            [19.0 ↔ 19.1] 변경 요약(체감 포인트)
+          </Link>
+        </li>
+        <li>
+          <Link to="/19_1-vs-19_2/effect-event">
+            [19.1 ↔ 19.2] useEffectEvent로 stale-closure 제거
+          </Link>
+        </li>
+        <li>
+          <Link to="/19_2/activity">
+            [19.2] &lt;Activity /&gt;로 화면 숨김/보여주기 & 선제 렌더 체험
+          </Link>
+        </li>
+      </ul>
+      <p className="hint">
+        좌측/우측 패널을 비교하며 동작 차이를 눈으로 확인하세요.
+      </p>
+    </div>
+  );
+}
+
+
+===== FILE: src/main.tsx =====
+// src/main.tsx
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import App from "./App";
+import Forms18vs19 from "./pages/Forms18vs19";
+import EffectEvent19_2 from "./pages/EffectEvent19_2";
+import Activity19_2 from "./pages/Activity19_2";
+import Notes19vs19_1 from "./pages/Notes19vs19_1";
+import ".//style.css";
+
+const router = createBrowserRouter([
+  { path: "/", element: <App /> },
+  { path: "/18-vs-19/forms", element: <Forms18vs19 /> },
+  { path: "/19-vs-19_1/notes", element: <Notes19vs19_1 /> },
+  { path: "/19_1-vs-19_2/effect-event", element: <EffectEvent19_2 /> },
+  { path: "/19_2/activity", element: <Activity19_2 /> },
+]);
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <RouterProvider router={router} />
+  </StrictMode>
+);
+
+
+===== FILE: src/pages/Activity19_2.tsx =====
+/* eslint-disable react-refresh/only-export-components */
+import { useState, Activity } from "react";
+
+function HeavyPanel() {
+  // 무거운 연산 시뮬레이션 (빈 블록 대신 실연산으로 no-empty 회피)
+  let acc = 0;
+  // 약 ~300ms CPU 작업 흉내(환경에 따라 다름)
+  const targetMs = 300;
+  const start = performance.now();
+  while (performance.now() - start < targetMs) {
+    for (let i = 0; i < 5_000; i++) acc += Math.sqrt(i);
+  }
+  return (
+    <div className="card">무거운 패널 렌더 완료 (acc={Math.round(acc)})</div>
+  );
+}
+
+export default function Activity19_2() {
+  const [showHeavy, setShowHeavy] = useState(false);
+
+  return (
+    <div className="container">
+      <h1>[19.2] &lt;Activity/&gt; 데모</h1>
+      <div className="row">
+        <button className="btn" onClick={() => setShowHeavy((v) => !v)}>
+          {showHeavy ? "숨기기" : "보이기"}
+        </button>
+        <span className="small">hidden 모드에서 UI 영향 최소화</span>
+      </div>
+
+      <div className="card">
+        <p>항상 부드러워야 하는 상단 영역</p>
+      </div>
+
+      <Activity mode={showHeavy ? "visible" : "hidden"}>
+        <HeavyPanel />
+      </Activity>
+
+      <div className="note">
+        <b>포인트</b>: <code>hidden</code>일 때 자식 이펙트를 언마운트/업데이트
+        지연 ⇒ 보이는 UI 프레임 저하 방지, 전환 시 이미 준비된 화면으로 빠르게
+        전환.
+      </div>
+    </div>
+  );
+}
+
+
+===== FILE: src/pages/EffectEvent19_2.tsx =====
+/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-hooks/exhaustive-deps */ // 데모 목적: Before 컴포넌트에서 일부러 의존성 누락
+import { useEffect, useState, useEffectEvent } from "react";
+
+export default function EffectEvent19_2() {
+  return (
+    <div className="container">
+      <h1>[19.1 ↔ 19.2] useEffectEvent 데모</h1>
+      <div className="grid">
+        <Before />
+        <After />
+      </div>
+      <div className="note">
+        <b>포인트</b>: 19.2의 <code>useEffectEvent</code>는 이펙트의 “비반응적
+        로직”을 분리해 의존성 배열 걱정 없이 <i>항상 최신 상태</i>에 접근하도록
+        보장.
+      </div>
+    </div>
+  );
+}
+
+function Before() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      // stale-closure 예시: 의존성 미관리 시 오래된 count를 참조할 수 있음
+      console.log("(19.1 이전 패턴) count =", count);
+    }, 1000);
+    return () => clearInterval(id);
+  }, []); // ❗ 의도적으로 의존성 누락 (데모용)
+
+  return (
+    <div className="card">
+      <h2>이전 패턴 (stale 가능)</h2>
+      <div className="row">
+        <button className="btn" onClick={() => setCount((c) => c + 1)}>
+          +1
+        </button>
+        <span>count: {count}</span>
+      </div>
+      <p className="small">
+        콘솔을 보세요. count가 오래된 값으로 찍힐 수 있음.
+      </p>
+    </div>
+  );
+}
+
+function After() {
+  const [count, setCount] = useState(0);
+
+  const logLatest = useEffectEvent(() => {
+    // 항상 최신 count를 읽음
+    console.log("(19.2) 최신 count =", count);
+  });
+
+  useEffect(() => {
+    const id = setInterval(() => logLatest(), 1000);
+    return () => clearInterval(id);
+  }, [logLatest]); // 안정적 핸들러
+
+  return (
+    <div className="card">
+      <h2>useEffectEvent로 해결(19.2)</h2>
+      <div className="row">
+        <button className="btn" onClick={() => setCount((c) => c + 1)}>
+          +1
+        </button>
+        <span>count: {count}</span>
+      </div>
+      <p className="small">콘솔을 보세요. 항상 최신 값이 출력.</p>
+    </div>
+  );
+}
+
+
+===== FILE: src/pages/Forms18vs19.tsx =====
+import { useState, useTransition } from "react";
+import { useActionState, useOptimistic, type FormEvent } from "react"; // <- type-only import
+
+// (가짜 API)
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+async function updateName(name: string) {
+  await delay(800);
+  if (name.trim().length < 2)
+    throw new Error("이름은 2글자 이상이어야 합니다.");
+  return name.toUpperCase();
+}
+
+export default function Forms18vs19() {
+  return (
+    <div className="container">
+      <h1>[18 ↔ 19] 폼 처리 비교</h1>
+      <div className="grid">
+        <Card18 />
+        <Card19 />
+      </div>
+      <div className="note">
+        <b>포인트</b>: 19에서는 <code>form action</code> +{" "}
+        <code>useActionState</code>로 pending/에러/낙관적 업데이트를
+        보일러플레이트 거의 없이 처리.
+      </div>
+    </div>
+  );
+}
+
+function Card18() {
+  const [name, setName] = useState("");
+  const [serverName, setServerName] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      try {
+        const result = await updateName(name);
+        setServerName(result);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "알 수 없는 오류");
+      }
+    });
+  };
+
+  return (
+    <div className="card">
+      <h2>React 18 스타일</h2>
+      <form onSubmit={onSubmit} className="grid twoCols">
+        <input
+          className="input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="이름 입력"
+        />
+        <button className="btn" disabled={isPending}>
+          업데이트
+        </button>
+      </form>
+      {isPending && <p className="small">전송 중...</p>}
+      {error && <p className="warn">{error}</p>}
+      {serverName && <p className="ok">서버 저장: {serverName}</p>}
+    </div>
+  );
+}
+
+function Card19() {
+  // 낙관적 UI(선반영)
+  const [optimisticName, setOptimisticName] = useOptimistic<string | null>(
+    null
+  );
+
+  // Actions + useActionState
+  async function action(_prev: { error?: string | null }, formData: FormData) {
+    const name = String(formData.get("name") ?? "");
+    try {
+      const result = await updateName(name);
+      setOptimisticName(result); // 성공 시 즉시 반영
+      return { error: null as string | null };
+    } catch (e: unknown) {
+      return { error: e instanceof Error ? e.message : "알 수 없는 오류" };
+    }
+  }
+  const [state, formAction, isPending] = useActionState(action, {
+    error: null as string | null,
+  });
+
+  return (
+    <div className="card">
+      <h2>React 19 스타일 (Actions)</h2>
+      <form action={formAction} className="grid twoCols">
+        <input className="input" name="name" placeholder="이름 입력" />
+        <button className="btn" disabled={isPending}>
+          업데이트
+        </button>
+      </form>
+      {isPending && <p className="small">전송 중...(pending 자동 관리)</p>}
+      {state.error && <p className="warn">{state.error}</p>}
+      {optimisticName && (
+        <p className="ok">서버 저장(낙관적): {optimisticName}</p>
+      )}
+    </div>
+  );
+}
+
+
+===== FILE: src/pages/Notes19vs19_1.tsx =====
+export default function Notes19vs19_1() {
+  return (
+    <div className="container">
+      <h1>[19.0 ↔ 19.1] 변화 요약</h1>
+      <div className="card">
+        <ul>
+          <li>
+            디버깅/스택 품질 개선, RSC 및 Suspense 동작 안정화 등 체감 품질
+            상승.
+          </li>
+          <li>
+            SPA 단일 페이지에선 “새 API” 체감은 제한적이므로 릴리스 요약
+            수준으로 이해.
+          </li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+
